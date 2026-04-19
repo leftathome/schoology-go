@@ -1,12 +1,13 @@
 package schoology
 
 import (
-	"fmt"
+	"crypto/md5"
+	"encoding/hex"
 	"net/url"
 )
 
-// mustParseURL parses a URL and panics if it fails
-// This is safe to use for hardcoded URLs that we know are valid
+// mustParseURL parses a URL and panics if it fails.
+// Safe for hardcoded URLs we know are valid.
 func mustParseURL(rawURL string) *url.URL {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -15,15 +16,12 @@ func mustParseURL(rawURL string) *url.URL {
 	return u
 }
 
-// sessCookieName derives the session cookie name from the session ID.
-// Real Schoology session cookies follow the Drupal SESS<md5(hostname)> pattern;
-// see bd issue schoology-go-9xy for verifying and replacing this heuristic.
-// Until then, fall back to the first 8 chars of the session ID (or the whole
-// ID if shorter) so short test IDs don't panic.
-func sessCookieName(sessID string) string {
-	suffix := sessID
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	return fmt.Sprintf("SESS%s", suffix)
+// sessCookieName returns the Schoology session cookie name for a host.
+// Schoology is built on Drupal 7, which names the session cookie
+// "SESS" + md5(cookie_domain). The md5 is computed over the bare
+// hostname (no leading dot, no scheme, no trailing slash) — this was
+// verified against a live Schoology session.
+func sessCookieName(host string) string {
+	sum := md5.Sum([]byte(host))
+	return "SESS" + hex.EncodeToString(sum[:])
 }

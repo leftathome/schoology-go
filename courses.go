@@ -2,11 +2,13 @@ package schoology
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"sort"
 )
 
-// GetCourses retrieves all courses for the authenticated user
+// GetCourses returns the courses/sections the current session is enrolled in.
+// For a parent session the result is scoped to the currently-selected child
+// (session.view_child in /iapi/parent/info); see GetChildren.
 func (c *Client) GetCourses(ctx context.Context) ([]*Course, error) {
 	const op = "GetCourses"
 
@@ -19,34 +21,23 @@ func (c *Client) GetCourses(ctx context.Context) ([]*Course, error) {
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Courses []*Course `json:"courses"`
-	}
-
-	if err := decodeJSON(resp, &result); err != nil {
+	var env coursesEnvelope
+	if err := decodeJSON(resp, &env); err != nil {
 		if e, ok := err.(*Error); ok {
 			e.Op = op
 		}
 		return nil, err
 	}
-
-	return result.Courses, nil
+	return env.Data.Courses, nil
 }
 
-// GetCourse retrieves details for a specific course
-func (c *Client) GetCourse(ctx context.Context, courseID string) (*Course, error) {
-	const op = "GetCourse"
+// GetChildren returns the children associated with a parent account, derived
+// from /iapi/parent/info. Returns an empty slice for non-parent accounts.
+// Order is by UID for stability.
+func (c *Client) GetChildren(ctx context.Context) ([]*Child, error) {
+	const op = "GetChildren"
 
-	if courseID == "" {
-		return nil, &Error{
-			Code:    ErrCodeClient,
-			Message: "courseID cannot be empty",
-			Op:      op,
-		}
-	}
-
-	path := fmt.Sprintf("/iapi2/courses/%s", courseID)
-	resp, err := c.do(ctx, http.MethodGet, path, nil)
+	resp, err := c.do(ctx, http.MethodGet, "/iapi/parent/info", nil)
 	if err != nil {
 		if e, ok := err.(*Error); ok {
 			e.Op = op
@@ -55,13 +46,18 @@ func (c *Client) GetCourse(ctx context.Context, courseID string) (*Course, error
 	}
 	defer resp.Body.Close()
 
-	var course Course
-	if err := decodeJSON(resp, &course); err != nil {
+	var env parentInfoEnvelope
+	if err := decodeJSON(resp, &env); err != nil {
 		if e, ok := err.(*Error); ok {
 			e.Op = op
 		}
 		return nil, err
 	}
 
-	return &course, nil
+	out := make([]*Child, 0, len(env.Body.Children))
+	for _, ch := range env.Body.Children {
+		out = append(out, ch)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UID < out[j].UID })
+	return out, nil
 }

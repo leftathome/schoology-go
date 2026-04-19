@@ -601,7 +601,7 @@ import "github.com/leftathome/schoology-go"
 
 func main() {
     client, err := schoology.NewClient(
-        "meanyms.schoology.com",
+        "yourschool.schoology.com",
         schoology.WithSession(
             os.Getenv("SCHOOLOGY_SESS_ID"),
             os.Getenv("SCHOOLOGY_CSRF_TOKEN"),

@@ -12,16 +12,23 @@
 
 This library is designed for parents and students who want to programmatically access their own educational data for personal use (dashboards, analytics, notifications, etc.).
 
+## Status
+
+> **Pre-v0.1.0.** The library talks to Schoology's internal `iapi/iapi2`
+> endpoints via session cookies. The surface is currently limited to the
+> two endpoints we've verified against live traffic (courses and
+> parent/children). Assignments, grades, and messages require HTML
+> parsing for parent accounts and are planned for v0.1.0 — see
+> `IMPLEMENTATION_PLAN.md` and `bd list`.
+
 ## Features
 
 - Session-based authentication (no OAuth approval needed)
-- Retrieve courses and course details
-- Get assignments and upcoming due dates
-- Access grades and gradebook data
-- Full type safety with Go structs
+- List the courses/sections on the current enrollment
+- List the children on a parent account
 - Context-aware API for timeouts and cancellation
-- Comprehensive error handling
-- Well-tested and documented
+- Typed errors with retryability helpers
+- Zero external dependencies
 
 ## Installation
 
@@ -71,28 +78,20 @@ func main() {
         log.Fatal(err)
     }
 
-    // Get all courses
+    children, err := client.GetChildren(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, ch := range children {
+        fmt.Printf("child %d: %s\n", ch.UID, ch.Username)
+    }
+
     courses, err := client.GetCourses(ctx)
     if err != nil {
         log.Fatal(err)
     }
-
-    for _, course := range courses {
-        fmt.Printf("%s - %s\n", course.CourseCode, course.Title)
-
-        // Get assignments for this course
-        assignments, err := client.GetAssignments(ctx, course.ID)
-        if err != nil {
-            log.Printf("Error getting assignments: %v", err)
-            continue
-        }
-
-        for _, assignment := range assignments {
-            fmt.Printf("  - %s (due: %s)\n",
-                assignment.Title,
-                assignment.DueDate.Format("2006-01-02"),
-            )
-        }
+    for _, c := range courses {
+        fmt.Printf("%s / %s @ %s\n", c.CourseTitle, c.SectionTitle, c.BuildingTitle)
     }
 }
 ```
@@ -116,30 +115,26 @@ Options:
 - `WithHTTPClient(httpClient)` - Use custom HTTP client
 - `WithTimeout(duration)` - Set request timeout
 
-### Available Methods
+### Available Methods (currently verified against live Schoology)
 
 **Courses:**
-- `GetCourses(ctx) ([]*Course, error)` - List all courses
-- `GetCourse(ctx, courseID) (*Course, error)` - Get course details
+- `GetCourses(ctx) ([]*Course, error)` — list courses for the current enrollment. For a parent account this returns the courses for the currently selected child (`session.view_child` in `/iapi/parent/info`).
 
-**Assignments:**
-- `GetAssignments(ctx, courseID) ([]*Assignment, error)` - Get course assignments
-- `GetAssignment(ctx, assignmentID) (*Assignment, error)` - Get assignment details
-- `GetUpcomingAssignments(ctx) ([]*Assignment, error)` - Get upcoming assignments across all courses
+**Parent accounts:**
+- `GetChildren(ctx) ([]*Child, error)` — list the parent's children.
 
-**Grades:**
-- `GetGrades(ctx) ([]*Grade, error)` - Get all grades
-- `GetCourseGrades(ctx, courseID) ([]*Grade, error)` - Get grades for a course
-- `GetAssignmentGrade(ctx, assignmentID) (*Grade, error)` - Get grade for an assignment
+**Session:**
+- `ValidateSession(ctx) error` — confirm the session still works.
+- `GetSessionInfo() *Session` — snapshot of the current session.
+- `SessionTimeRemaining() time.Duration` — approximate time until expiry.
+
+Assignments, grades, messages, attendance, and calendar events are planned for v0.1.0 via HTML parsing. See `IMPLEMENTATION_PLAN.md` and open `bd` issues.
 
 ## Examples
 
-See the [examples/](examples/) directory for complete working examples:
+See the [examples/](examples/) directory:
 
-- `examples/basic/` - Basic usage
-- `examples/session/` - Session management
-- `examples/assignments/` - Working with assignments
-- `examples/grades/` - Retrieving grades
+- `examples/basic/` — validate a session, list children, list courses
 
 ## Security & Privacy
 
@@ -211,25 +206,23 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## Roadmap
 
-### v0.1.0 (Current)
-- [x] Session-based authentication
-- [x] Course retrieval
-- [x] Assignment retrieval
-- [x] Grade retrieval
-- [x] Comprehensive tests
-- [x] Documentation
+### Pre-v0.1.0 (current)
+- [x] Session-based authentication against verified endpoints
+- [x] Courses list (live-verified against a real Schoology instance)
+- [x] Parent children list (`/iapi/parent/info`)
 
-### v0.2.0 (Planned)
-- [ ] Message retrieval
-- [ ] Calendar/events
-- [ ] Credential-based authentication (chromedp)
+### v0.1.0 (next)
+- [ ] Assignments, grades, messages via HTML parsing
+- [ ] Redacted HTML fixtures and per-page parsers
+- [ ] Child-switch helper for parent accounts
+
+### v0.2.0 (planned)
+- [ ] Credential-based authentication (chromedp or Playwright)
 - [ ] Automatic session refresh
+- [ ] Calendar / events
 
-### v0.3.0 (Future)
-- [ ] Rate limiting
-- [ ] Response caching
-- [ ] Webhook support
-- [ ] CLI tool
+### v0.3.0 (future)
+- [ ] Rate limiting, response caching, retries, CLI tool
 
 ## FAQ
 

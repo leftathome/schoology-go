@@ -1,36 +1,30 @@
 {
-  "courses": [
-    {
-      "id": "12345",
-      "title": "Mathematics 7",
-      "course_code": "MATH7",
-      "section_id": "67890",
-      "section_code": "MATH7-1",
-      "teacher": "Ms. Smith",
-      "teacher_id": "11111",
-      "period": "2",
-      "room": "Room 205",
-      "description": "7th Grade Mathematics",
-      "active": true,
-      "grade_level": [7],
-      "start_date": "2024-09-01T00:00:00Z",
-      "end_date": "2025-06-15T00:00:00Z"
-    },
-    {
-      "id": "12346",
-      "title": "English Language Arts 7",
-      "course_code": "ELA7",
-      "section_id": "67891",
-      "section_code": "ELA7-1",
-      "teacher": "Mr. Johnson",
-      "teacher_id": "11112",
-      "period": "3",
-      "room": "Room 301",
-      "description": "7th Grade English",
-      "active": true,
-      "grade_level": [7],
-      "start_date": "2024-09-01T00:00:00Z",
-      "end_date": "2025-06-15T00:00:00Z"
-    }
-  ]
+  "data": {
+    "courses": [
+      {
+        "nid": 7978424918,
+        "courseNid": 1252139350,
+        "courseTitle": "Mathematics 7",
+        "sectionTitle": "S2 7(A) 1013",
+        "buildingTitle": "Example Middle School",
+        "logoImgSrc": "/example-logo.png",
+        "weight": 10,
+        "courseLandingPageType": "materials",
+        "isCsl": false,
+        "adminType": "student"
+      },
+      {
+        "nid": 7978424919,
+        "courseNid": 1252139351,
+        "courseTitle": "Science 7",
+        "sectionTitle": "S2 7(B) 2201",
+        "buildingTitle": "Example Middle School",
+        "logoImgSrc": "/example-logo.png",
+        "weight": 20,
+        "courseLandingPageType": "materials",
+        "isCsl": false,
+        "adminType": "student"
+      }
+    ]
+  }
 }

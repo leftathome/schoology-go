@@ -47,7 +47,7 @@ func (c *Client) UpdateSession(sessID, csrfToken, csrfKey, uid string) error {
 	baseURL := fmt.Sprintf("https://%s", c.host)
 	cookies := []*http.Cookie{
 		{
-			Name:     sessCookieName(sessID),
+			Name:     sessCookieName(c.host),
 			Value:    sessID,
 			Path:     "/",
 			Expires:  c.session.ExpiresAt,

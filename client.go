@@ -94,13 +94,14 @@ func WithSession(sessID, csrfToken, csrfKey, uid string) Option {
 			ExpiresAt: time.Now().Add(14 * 24 * time.Hour), // Default 14 day expiration
 		}
 
-		// Set cookies in the jar
+		// Set cookies in the jar. Real Schoology serves the cookie with a
+		// leading-dot domain so subdomains are covered; the jar handles
+		// that automatically when we omit the explicit Domain.
 		baseURL, _ := url.Parse(c.baseURL)
 		cookies := []*http.Cookie{
 			{
-				Name:     sessCookieName(sessID),
+				Name:     sessCookieName(baseURL.Host),
 				Value:    sessID,
-				Domain:   baseURL.Host,
 				Path:     "/",
 				Expires:  c.session.ExpiresAt,
 				Secure:   true,

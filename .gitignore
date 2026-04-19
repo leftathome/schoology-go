@@ -42,3 +42,8 @@ testdata/*.tmp
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Playwright MCP / endpoint-discovery captures - may contain real student data
+.playwright-captures/
+.playwright-mcp/
+*.har
