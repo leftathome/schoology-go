@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "schoology_go",
+  "project_id": "fa0c0d76-e1e3-48f4-a284-f222d1228228"
+}
