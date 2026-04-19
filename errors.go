@@ -1,6 +1,9 @@
 package schoology
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors for common cases
 var (
@@ -71,6 +74,9 @@ const (
 
 	// ErrCodeNetwork indicates a network connectivity error
 	ErrCodeNetwork ErrorCode = "network"
+
+	// ErrCodeParse indicates an HTML or response parse failure
+	ErrCodeParse ErrorCode = "parse"
 )
 
 // Error represents an error from the Schoology client
@@ -138,6 +144,67 @@ func IsNotFoundError(err error) bool {
 func IsRateLimitError(err error) bool {
 	e, ok := err.(*Error)
 	return ok && e.Code == ErrCodeRateLimit
+}
+
+// IsParseError returns true if the error (or any wrapped error) is a parse error.
+func IsParseError(err error) bool {
+	if e, ok := err.(*Error); ok && e.Code == ErrCodeParse {
+		return true
+	}
+	var p ParseErrors
+	return errors.As(err, &p)
+}
+
+// NewParseError constructs an *Error with ErrCodeParse. Op should identify
+// the resource and selector path (e.g. "parse grading_report: tr.grade-row").
+func NewParseError(op, message string) *Error {
+	return &Error{
+		Code:    ErrCodeParse,
+		Op:      op,
+		Message: message,
+	}
+}
+
+// ParseErrors is a collection of per-item parse failures from a single
+// HTML page. Parsers return their best-effort result alongside a
+// ParseErrors value so a single malformed row does not fail the whole
+// page — callers see both the rows that parsed and the ones that did not.
+type ParseErrors []*Error
+
+// Error implements the error interface.
+func (p ParseErrors) Error() string {
+	switch len(p) {
+	case 0:
+		return "no parse errors"
+	case 1:
+		return p[0].Error()
+	default:
+		return fmt.Sprintf("%s (and %d more parse errors)", p[0].Error(), len(p)-1)
+	}
+}
+
+// Unwrap exposes the individual errors so errors.Is / errors.As can
+// traverse the collection.
+func (p ParseErrors) Unwrap() []error {
+	out := make([]error, len(p))
+	for i, e := range p {
+		out[i] = e
+	}
+	return out
+}
+
+// Append adds err to the collection. err must be non-nil.
+func (p *ParseErrors) Append(err *Error) {
+	*p = append(*p, err)
+}
+
+// AsError returns nil if p is empty, otherwise p itself. Convenience for
+// parsers ending with `return result, errs.AsError()`.
+func (p ParseErrors) AsError() error {
+	if len(p) == 0 {
+		return nil
+	}
+	return p
 }
 
 // IsRetryable returns true if the error is likely transient and the operation can be retried
