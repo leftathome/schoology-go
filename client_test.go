@@ -214,6 +214,43 @@ func TestGetCourses_Mock(t *testing.T) {
 	}
 }
 
+func TestSessCookieName(t *testing.T) {
+	tests := []struct {
+		name   string
+		sessID string
+		want   string
+	}{
+		{name: "long id truncated", sessID: "abcdefghijkl", want: "SESSabcdefgh"},
+		{name: "exactly 8 chars", sessID: "abcdefgh", want: "SESSabcdefgh"},
+		{name: "short id used whole", sessID: "abc", want: "SESSabc"},
+		{name: "empty id", sessID: "", want: "SESS"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sessCookieName(tt.sessID); got != tt.want {
+				t.Errorf("sessCookieName(%q) = %q, want %q", tt.sessID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdateSession_ShortID(t *testing.T) {
+	c, err := NewClient(
+		"school.schoology.com",
+		WithSession("longsess", "token", "key", "uid"),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	// A session ID shorter than 8 chars used to panic on sessID[:8].
+	if err := c.UpdateSession("abc", "token2", "key2", "uid2"); err != nil {
+		t.Fatalf("UpdateSession with short ID: %v", err)
+	}
+	if c.session.SessID != "abc" {
+		t.Errorf("expected session ID 'abc', got %q", c.session.SessID)
+	}
+}
+
 func TestCheckResponse(t *testing.T) {
 	tests := []struct {
 		name       string

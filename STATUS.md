@@ -2,11 +2,22 @@
 
 ## Summary
 
-`schoology-go` is a Go client library for accessing the Schoology Learning Management System. The MVP (v0.1.0) implementation is complete and ready for testing.
+`schoology-go` is a Go client library for accessing the Schoology Learning Management System. The v0.1.0 code scaffold is written and the unit-test suite is green, but the library has **not yet been confirmed to work against a real Schoology server**. The `/iapi2/*` endpoint paths, CSRF header names, and JSON field names in `types.go` were reverse-engineered from prior knowledge and still need live verification.
 
 **Created**: 2025-10-24
-**Status**: MVP Complete - Ready for Integration Testing
-**Test Coverage**: 22.5% (will increase as we add more endpoint-specific tests)
+**Last reviewed**: 2026-04-19
+**Status**: Code-complete, blocked on live endpoint verification before v0.1.0 can ship
+**Test Coverage**: 22.5% (mock-only) — raising this is tracked as `schoology-go-3b7`
+
+## Outstanding work (tracked in beads)
+
+Run `bd list` for details. Highlights:
+
+- `schoology-go-401` (P0) — Verify `/iapi2` endpoint paths and JSON schemas against live Schoology
+- `schoology-go-9xy` (P0) — Verify the `SESS<...>` cookie name pattern (current code approximates it)
+- `schoology-go-n1g` (P0) — Actually run the integration tests end-to-end
+- `schoology-go-3b7` (P2) — Raise unit-test coverage above 80%
+- `schoology-go-oou` (P3) — Decide chromedp vs Playwright MCP for v0.2.0 credential automation
 
 ## Completed Features
 

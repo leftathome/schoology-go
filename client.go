@@ -96,14 +96,9 @@ func WithSession(sessID, csrfToken, csrfKey, uid string) Option {
 
 		// Set cookies in the jar
 		baseURL, _ := url.Parse(c.baseURL)
-		// Use first 8 chars of session ID for cookie name, or full ID if shorter
-		cookieSuffix := sessID
-		if len(sessID) > 8 {
-			cookieSuffix = sessID[:8]
-		}
 		cookies := []*http.Cookie{
 			{
-				Name:     fmt.Sprintf("SESS%s", cookieSuffix),
+				Name:     sessCookieName(sessID),
 				Value:    sessID,
 				Domain:   baseURL.Host,
 				Path:     "/",
