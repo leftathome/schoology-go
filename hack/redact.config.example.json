@@ -1,0 +1,16 @@
+{
+  "_comment": "Copy this file to hack/redact.config.json (gitignored) and fill in the real-name -> placeholder mapping for your own Schoology account. The redactor applies entries longest-first; it refuses to run if any replacement value contains a find key, since that would break idempotence.",
+
+  "replacements": {
+    "Realchild Alpha Lastname": "Student Alpha",
+    "Realchild Beta Lastname":  "Student Beta",
+    "realparent@example.net":   "parent@example.com",
+    "alpha.student@example.net": "studentalpha@example.com",
+    "beta.student@example.net":  "studentbeta@example.com",
+    "130401977": "UID-1001",
+    "130401987": "UID-1002",
+    "7978424918": "COURSE-NID-1",
+    "1252139350": "COURSE-1",
+    "myschool.schoology.com": "example.schoology.com"
+  }
+}
