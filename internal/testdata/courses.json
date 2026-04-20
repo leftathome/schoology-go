@@ -2,10 +2,10 @@
   "data": {
     "courses": [
       {
-        "nid": 7978424918,
-        "courseNid": 1252139350,
+        "nid": 7000000001,
+        "courseNid": 2000000001,
         "courseTitle": "Mathematics 7",
-        "sectionTitle": "S2 7(A) 1013",
+        "sectionTitle": "Section A",
         "buildingTitle": "Example Middle School",
         "logoImgSrc": "/example-logo.png",
         "weight": 10,
@@ -14,10 +14,10 @@
         "adminType": "student"
       },
       {
-        "nid": 7978424919,
-        "courseNid": 1252139351,
+        "nid": 7000000002,
+        "courseNid": 2000000002,
         "courseTitle": "Science 7",
-        "sectionTitle": "S2 7(B) 2201",
+        "sectionTitle": "Section B",
         "buildingTitle": "Example Middle School",
         "logoImgSrc": "/example-logo.png",
         "weight": 20,

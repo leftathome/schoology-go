@@ -93,6 +93,26 @@ func TestParseErrors_Append(t *testing.T) {
 	}
 }
 
+func TestParseErrors_Unwrap(t *testing.T) {
+	errs := ParseErrors{
+		NewParseError("op1", "first"),
+		NewParseError("op2", "second"),
+	}
+	got := errs.Unwrap()
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0] != errs[0] || got[1] != errs[1] {
+		t.Error("Unwrap() did not preserve order/identity")
+	}
+
+	// Empty slice → empty unwrap result.
+	var empty ParseErrors
+	if len(empty.Unwrap()) != 0 {
+		t.Error("empty.Unwrap() not empty")
+	}
+}
+
 func TestParseErrors_ErrorsAs(t *testing.T) {
 	// A ParseErrors returned as a plain `error` should still be
 	// discoverable via errors.As.
@@ -104,5 +124,134 @@ func TestParseErrors_ErrorsAs(t *testing.T) {
 	}
 	if len(got) != 1 {
 		t.Errorf("unwrapped len = %d, want 1", len(got))
+	}
+}
+
+func TestError_Error(t *testing.T) {
+	inner := errors.New("inner boom")
+	tests := []struct {
+		name string
+		e    *Error
+		want string
+	}{
+		{
+			name: "op only",
+			e:    &Error{Op: "GetX", Message: "boom"},
+			want: "GetX: boom",
+		},
+		{
+			name: "op + inner",
+			e:    &Error{Op: "GetX", Message: "boom", Err: inner},
+			want: "GetX: boom: inner boom",
+		},
+		{
+			name: "no op, with inner",
+			e:    &Error{Message: "boom", Err: inner},
+			want: "boom: inner boom",
+		},
+		{
+			name: "message only",
+			e:    &Error{Message: "just msg"},
+			want: "just msg",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.e.Error(); got != tt.want {
+				t.Errorf("Error() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestError_Unwrap(t *testing.T) {
+	inner := errors.New("inner")
+	e := &Error{Message: "boom", Err: inner}
+	if got := e.Unwrap(); got != inner {
+		t.Errorf("Unwrap() = %v, want %v", got, inner)
+	}
+	if !errors.Is(e, inner) {
+		t.Error("errors.Is should traverse Error.Err")
+	}
+
+	bare := &Error{Message: "boom"}
+	if got := bare.Unwrap(); got != nil {
+		t.Errorf("Unwrap on bare = %v, want nil", got)
+	}
+}
+
+func TestError_Is(t *testing.T) {
+	a := &Error{Code: ErrCodeAuth, Message: "not authenticated"}
+	b := &Error{Code: ErrCodeAuth, Message: "not authenticated"}
+	c := &Error{Code: ErrCodeAuth, Message: "different"}
+	d := &Error{Code: ErrCodeNotFound, Message: "not authenticated"}
+
+	if !a.Is(b) {
+		t.Error("a.Is(b) = false, want true (same code + message)")
+	}
+	if a.Is(c) {
+		t.Error("a.Is(c) = true, want false (different message)")
+	}
+	if a.Is(d) {
+		t.Error("a.Is(d) = true, want false (different code)")
+	}
+	// non-*Error target
+	if a.Is(errors.New("plain")) {
+		t.Error("a.Is(plain error) = true, want false")
+	}
+
+	// sentinel via errors.Is
+	if !errors.Is(ErrNotAuthenticated, ErrNotAuthenticated) {
+		t.Error("errors.Is sentinel self-check failed")
+	}
+}
+
+func TestIsAuthError(t *testing.T) {
+	if !IsAuthError(ErrNotAuthenticated) {
+		t.Error("IsAuthError(ErrNotAuthenticated) = false")
+	}
+	if IsAuthError(ErrNotFound) {
+		t.Error("IsAuthError(ErrNotFound) = true")
+	}
+	if IsAuthError(errors.New("plain")) {
+		t.Error("IsAuthError(plain) = true")
+	}
+	if IsAuthError(nil) {
+		t.Error("IsAuthError(nil) = true")
+	}
+}
+
+func TestIsRateLimitError(t *testing.T) {
+	if !IsRateLimitError(ErrRateLimited) {
+		t.Error("IsRateLimitError(ErrRateLimited) = false")
+	}
+	if IsRateLimitError(ErrNotAuthenticated) {
+		t.Error("IsRateLimitError(auth) = true")
+	}
+	if IsRateLimitError(errors.New("plain")) {
+		t.Error("IsRateLimitError(plain) = true")
+	}
+}
+
+func TestIsRetryable(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "rate limit", err: ErrRateLimited, want: true},
+		{name: "network", err: &Error{Code: ErrCodeNetwork, Message: "x"}, want: true},
+		{name: "5xx", err: &Error{Code: ErrCodeServer, StatusCode: 503}, want: true},
+		{name: "4xx server err", err: &Error{Code: ErrCodeServer, StatusCode: 400}, want: false},
+		{name: "auth", err: ErrNotAuthenticated, want: false},
+		{name: "plain", err: errors.New("boom"), want: false},
+		{name: "nil", err: nil, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsRetryable(tt.err); got != tt.want {
+				t.Errorf("IsRetryable(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }

@@ -2,16 +2,17 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestRedact_PlainSubstitution(t *testing.T) {
-	in := `<html>Hello John Smith, your UID is 130401977.</html>`
+	in := `<html>Hello John Smith, your UID is 1099999099.</html>`
 	c := &Config{Replacements: map[string]string{
 		"John Smith": "Student Alpha",
-		"130401977":  "UID-1001",
+		"1099999099":  "UID-1001",
 	}}
 	got, err := Redact(in, c)
 	if err != nil {
@@ -42,9 +43,9 @@ func TestRedact_LongestFirst(t *testing.T) {
 }
 
 func TestRedact_Idempotent(t *testing.T) {
-	in := `<a href="/parent/grading_report/130401977">Jane Q. Smith</a>`
+	in := `<a href="/parent/grading_report/1099999099">Jane Q. Smith</a>`
 	c := &Config{Replacements: map[string]string{
-		"130401977":     "UID-1001",
+		"1099999099":     "UID-1001",
 		"Jane Q. Smith": "Student Alpha",
 	}}
 	once, err := Redact(in, c)
@@ -164,6 +165,110 @@ func TestLoadConfig_InvalidJSON(t *testing.T) {
 	}
 	if _, err := LoadConfig(path); err == nil {
 		t.Error("expected parse error, got nil")
+	}
+}
+
+func TestRun_MissingConfig(t *testing.T) {
+	err := run("/tmp/ignored", "/tmp/ignored", "/tmp/does-not-exist-xyzzy.json")
+	if err == nil {
+		t.Error("expected error for missing config, got nil")
+	}
+}
+
+func TestRun_MissingInput(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cfg.json")
+	if err := os.WriteFile(cfgPath, []byte(`{"replacements":{"a":"b"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := run(filepath.Join(dir, "missing.html"), filepath.Join(dir, "out.html"), cfgPath)
+	if err == nil {
+		t.Error("expected error for missing input, got nil")
+	}
+}
+
+func TestRun_InvalidReplacement(t *testing.T) {
+	// Config has an idempotence violation (replacement contains find
+	// key); Redact() refuses and run() should propagate.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cfg.json")
+	inPath := filepath.Join(dir, "in.html")
+	outPath := filepath.Join(dir, "out.html")
+	if err := os.WriteFile(cfgPath, []byte(`{"replacements":{"Student Alpha":"Student Alpha-ph","Alpha":"X"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inPath, []byte("any"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(inPath, outPath, cfgPath); err == nil {
+		t.Error("expected idempotence-guard error, got nil")
+	}
+}
+
+func TestRun_WriteFailure(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cfg.json")
+	inPath := filepath.Join(dir, "in.html")
+	if err := os.WriteFile(cfgPath, []byte(`{"replacements":{"a":"b"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inPath, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// outPath points to a directory — WriteFile will fail.
+	err := run(inPath, dir, cfgPath)
+	if err == nil {
+		t.Error("expected write error, got nil")
+	}
+}
+
+// TestMain_CLI builds the tool and runs it end-to-end. Covers main()
+// itself (flag parsing, exit codes, arg validation).
+func TestMain_CLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode skips subprocess test")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "redact.test-bin")
+	if cmd := exec.Command("go", "build", "-o", bin, "."); true {
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("build: %v\n%s", err, out)
+		}
+	}
+
+	cfgPath := filepath.Join(dir, "cfg.json")
+	inPath := filepath.Join(dir, "in.html")
+	outPath := filepath.Join(dir, "out.html")
+	if err := os.WriteFile(cfgPath, []byte(`{"replacements":{"Real":"Placeholder"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inPath, []byte("<p>Real name</p>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Happy path.
+	cmd := exec.Command(bin, "-in", inPath, "-out", outPath, "-config", cfgPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "<p>Placeholder name</p>" {
+		t.Errorf("out = %q", got)
+	}
+
+	// Missing args → exit 2.
+	cmd = exec.Command(bin)
+	out, err = cmd.CombinedOutput()
+	if err == nil {
+		t.Errorf("expected non-zero exit for missing args, got success\n%s", out)
+	}
+	if !strings.Contains(string(out), "usage:") {
+		t.Errorf("stderr missing usage hint: %s", out)
 	}
 }
 

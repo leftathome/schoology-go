@@ -211,14 +211,14 @@ func TestGetCourses_Mock(t *testing.T) {
 	if courses[0].CourseTitle != "Mathematics 7" {
 		t.Errorf("expected course[0].CourseTitle = 'Mathematics 7', got %q", courses[0].CourseTitle)
 	}
-	if courses[0].NID != 7978424918 {
-		t.Errorf("expected course[0].NID = 7978424918, got %d", courses[0].NID)
+	if courses[0].NID != 7000000001 {
+		t.Errorf("expected course[0].NID = 7000000001, got %d", courses[0].NID)
 	}
-	if courses[0].CourseNID != 1252139350 {
-		t.Errorf("expected course[0].CourseNID = 1252139350, got %d", courses[0].CourseNID)
+	if courses[0].CourseNID != 2000000001 {
+		t.Errorf("expected course[0].CourseNID = 2000000001, got %d", courses[0].CourseNID)
 	}
-	if courses[1].SectionTitle != "S2 7(B) 2201" {
-		t.Errorf("expected course[1].SectionTitle = 'S2 7(B) 2201', got %q", courses[1].SectionTitle)
+	if courses[1].SectionTitle != "Section B" {
+		t.Errorf("expected course[1].SectionTitle = 'Section B', got %q", courses[1].SectionTitle)
 	}
 }
 
@@ -247,11 +247,44 @@ func TestGetChildren_Mock(t *testing.T) {
 		t.Fatalf("expected 2 children, got %d", len(children))
 	}
 	// Sorted by UID, so lower UID first.
-	if children[0].UID != 130401977 {
-		t.Errorf("expected children[0].UID = 130401977, got %d", children[0].UID)
+	if children[0].UID != 1000000001 {
+		t.Errorf("expected children[0].UID = 1000000001, got %d", children[0].UID)
 	}
-	if children[1].UID != 130401987 {
-		t.Errorf("expected children[1].UID = 130401987, got %d", children[1].UID)
+	if children[1].UID != 1000000002 {
+		t.Errorf("expected children[1].UID = 1000000002, got %d", children[1].UID)
+	}
+}
+
+func TestWithHTTPClient(t *testing.T) {
+	custom := &http.Client{Timeout: 7 * time.Second}
+	c, err := NewClient("school.schoology.com", WithHTTPClient(custom))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if c.httpClient != custom {
+		t.Error("WithHTTPClient did not install the provided client")
+	}
+	if _, err := NewClient("school.schoology.com", WithHTTPClient(nil)); err == nil {
+		t.Error("WithHTTPClient(nil) should error")
+	}
+}
+
+func TestWithTimeout(t *testing.T) {
+	c, err := NewClient("school.schoology.com", WithTimeout(3*time.Second))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if c.timeout != 3*time.Second {
+		t.Errorf("timeout = %v, want 3s", c.timeout)
+	}
+	if c.httpClient.Timeout != 3*time.Second {
+		t.Errorf("httpClient.Timeout = %v, want 3s", c.httpClient.Timeout)
+	}
+	if _, err := NewClient("school.schoology.com", WithTimeout(0)); err == nil {
+		t.Error("WithTimeout(0) should error")
+	}
+	if _, err := NewClient("school.schoology.com", WithTimeout(-1)); err == nil {
+		t.Error("WithTimeout(-1) should error")
 	}
 }
 
