@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,12 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	timeout    time.Duration
+
+	// viewChildMu serializes view-child switch + dependent read pairs.
+	// Schoology's parent UI stores the currently-viewed child in
+	// server-side session state, so any method that calls viewAs has
+	// to hold this mutex for the full duration of the follow-up read.
+	viewChildMu sync.Mutex
 }
 
 // Session holds authentication state
