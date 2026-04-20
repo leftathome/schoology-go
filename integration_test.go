@@ -18,6 +18,10 @@ import (
 // They touch real student data — do NOT commit any test output.
 //
 //   op run --env-file=.env.integration -- go test -tags=integration -v
+//
+// These are smoke checks, not regression coverage — see the
+// "Testing policy" section of AGENTS.md for the full policy, and
+// docs/OBSERVED_BEHAVIOR.md for the empirical reference.
 
 func getTestClient(t *testing.T) *Client {
 	t.Helper()

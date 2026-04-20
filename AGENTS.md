@@ -36,6 +36,46 @@ cp -rf source dest          # NOT: cp -r source dest
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
 
+## Testing policy
+
+**Live tests rot.** Schoology session cookies expire in ~14 days, the
+HTML evolves across releases, and school-year transitions change what
+data is populated on an account. Do not lean on `integration_test.go`
+for regression coverage — by summer after a capture, several of those
+tests will fail for reasons unrelated to any library change.
+
+**Regression coverage lives in the offline suite.** Every parser must
+have table-driven tests backed by a fixture under
+`internal/testdata/html/`. Coverage targets apply to those — they
+have to run clean in CI without credentials, in perpetuity.
+
+**Integration tests are smoke checks, not assertions.** `go test
+-tags=integration` with real creds is for "the HTTP+parsing pipeline
+talks to the live service today", and for spot-checking when the
+offline tests pass but you suspect Schoology changed something the
+fixtures don't exercise. A passing integration run is NOT evidence
+that nothing regressed.
+
+**When a live probe reveals new server behavior,** update
+`docs/OBSERVED_BEHAVIOR.md` (with the new "Observed:" date), then
+adjust fixtures + parsers. The observation doc is what future
+contributors consult to answer "where did that assumption come from?"
+— keep it factual and dated.
+
+**PII discipline.** Committed fixtures and test assertions must use
+placeholder identifiers (`UID-1001`, `Example Teacher`, generic
+section codes like `Section A`). Real child UIDs, real teacher
+names, real email addresses, and district-specific formatting
+(e.g. `S2 7(A) 1013`-style section codes) MUST NOT appear in any
+committed file. Raw captures stay in `.playwright-captures/`
+(gitignored). Re-scan with:
+
+```bash
+grep -nrE 'yourhost|realname|realschool' *.go internal/testdata/
+```
+
+before every commit that touches tests or fixtures.
+
 <!-- BEGIN BEADS INTEGRATION profile:full hash:d4f96305 -->
 ## Issue Tracking with bd (beads)
 
