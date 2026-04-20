@@ -1,239 +1,169 @@
-# Session Cookie Extraction Guide
+# Establishing a Session
 
-This guide explains how to extract session cookies from Schoology to use with the `schoology-go` library.
+`schoology-go` makes authenticated requests using an already-established
+Schoology session — four values (`SessID`, `CSRFToken`, `CSRFKey`,
+`UID`) passed to `schoology.WithSession`. This doc covers the two ways
+to get those values.
 
-## Why Session Cookies?
+## Why not username/password?
 
-Instead of requiring district-level API approval (which can take weeks or be denied), this library uses your existing parent/student login session. This is the same approach used by browser extensions and mobile apps.
+Most Schoology tenants front authentication with district SSO
+(PowerSchool SAML, Google Workspace, Okta, Clever, etc.). A scripted
+username/password login works on a small minority of tenants and
+breaks everywhere else. Session-cookie reuse works universally,
+because it sidesteps authentication entirely: the user logs in once
+through whatever mechanism their district uses, and the library
+reuses that session.
 
-**Important**: Session cookies are just as sensitive as your password. Keep them secure and never share them.
+## Option A (recommended): the `auth` subpackage
 
-## Prerequisites
+`github.com/leftathome/schoology-go/auth` drives a browser for you.
 
-- An active Schoology parent or student account
-- A web browser (Chrome, Firefox, or Safari)
-- Access to browser Developer Tools
+### Interactive login (SSO, MFA, anything)
 
-## Method 1: Chrome DevTools (Recommended)
+Opens a visible Chromium window, lets the user finish whatever login
+flow their district uses, then extracts the session and returns.
 
-### Step 1: Log Into Schoology
+```go
+import (
+    "context"
+    "github.com/leftathome/schoology-go"
+    "github.com/leftathome/schoology-go/auth"
+)
 
-1. Open Chrome and navigate to your school's Schoology site
-2. Log in with your username and password
-3. Verify you can see your dashboard
+creds, err := auth.Login(context.Background(), "yourschool.schoology.com")
+if err != nil { /* handle */ }
 
-### Step 2: Open Developer Tools
+client, err := auth.NewClient(creds)
+// or: schoology.NewClient("yourschool.schoology.com",
+//        schoology.WithSession(creds.SessID, creds.CSRFToken, creds.CSRFKey, creds.UID))
+```
 
-1. Press `F12` (or `Ctrl+Shift+I` on Windows/Linux, `Cmd+Option+I` on Mac)
-2. Click on the **Application** tab
-   - If you don't see it, click the `>>` button to find it
+### Scripted password login (tenants with native Schoology auth)
 
-### Step 3: Navigate to Cookies
+```go
+creds, err := auth.LoginWithPassword(ctx, "yourschool.schoology.com",
+    "parent@example.com", "correct horse battery staple")
+```
 
-1. In the left sidebar, expand **Cookies**
-2. Click on your Schoology domain (e.g., `https://yourschool.schoology.com`)
+Returns `ErrSSORequired` if the server redirects off-host (district
+uses SSO — fall back to `auth.Login`), or `ErrBadCredentials` if the
+`/login` form re-renders (wrong username or password).
 
-### Step 4: Extract Required Values
+### Reusing sessions across runs
 
-You need to find and copy these four values:
+```go
+const path = ".schoology-session.json" // add to .gitignore
 
-#### 1. Session ID (SESS*)
-- Look for a cookie starting with `SESS` followed by a long string
-- Example: `SESSabcd1234...`
-- Copy the **Value** (the entire cookie value)
-- This is your `SCHOOLOGY_SESS_ID`
+creds, err := auth.LoadCredentials(path)
+if err != nil {
+    creds, err = auth.Login(ctx, host)
+    if err != nil { /* handle */ }
+    _ = auth.SaveCredentials(path, creds)
+}
 
-#### 2. CSRF Token
-- Find the cookie named `CSRF_TOKEN`
-- Copy the **Value**
-- This is your `SCHOOLOGY_CSRF_TOKEN`
+client, err := auth.NewClient(creds)
+```
 
-#### 3. CSRF Key
-- Find the cookie named `CSRF_KEY`
-- Copy the **Value**
-- This is your `SCHOOLOGY_CSRF_KEY`
+The file is written with `0600` permissions (user-only read/write).
 
-#### 4. User ID
-- Find the cookie named `UID` or look at the session data
-- Copy the **Value**
-- This is your `SCHOOLOGY_UID`
+### First-run note
 
-### Step 5: Store Securely
+On first invocation, `rod` downloads a Chromium build (~140 MB) into
+its cache directory. Subsequent runs reuse it. Override with
+`auth.WithBrowserBinary("/usr/bin/google-chrome")` if you already have
+a Chromium-compatible browser installed.
 
-Create a file `.env.integration` (do NOT commit this to git):
+## Option B: manual extraction
+
+If you're setting up credentials for an unattended job (e.g. CI), you
+may prefer to extract values by hand and store them in a secret
+manager. Here's what each value is and where to find it.
+
+> **The old version of this doc said three of these were cookies.**
+> **They are not.** Only `SessID` is a cookie. `CSRFToken`, `CSRFKey`,
+> and `UID` live in the page's embedded `Drupal.settings` JSON.
+
+### 1. `SessID` — the `SESS…` cookie (HttpOnly)
+
+1. Log into `https://yourschool.schoology.com` in Chrome/Firefox.
+2. DevTools → **Application** (Chrome) or **Storage** (Firefox) tab →
+   **Cookies** → your Schoology domain.
+3. Find the cookie whose name starts with `SESS` followed by 32 hex
+   characters (e.g. `SESS0f3c278d8cbcca12eab60706abd3d4f3`). The name
+   is `SESS` + md5(host), so it varies by tenant.
+4. Copy the **Value**. That's `SCHOOLOGY_SESS_ID`.
+
+The cookie is `HttpOnly`, so it won't appear in `document.cookie` —
+you need the DevTools cookie inspector, not the Console.
+
+### 2, 3, 4. `CSRFToken`, `CSRFKey`, `UID` — from `Drupal.settings`
+
+1. Still on a logged-in Schoology page, open DevTools → **Console**.
+2. Paste and run:
+
+   ```js
+   JSON.stringify({
+     csrf_token: Drupal.settings.s_common.csrf_token,
+     csrf_key:   Drupal.settings.s_common.csrf_key,
+     uid:        String(Drupal.settings.s_common.user.uid),
+   }, null, 2)
+   ```
+
+3. Copy each string into the matching env var:
+   - `csrf_token` → `SCHOOLOGY_CSRF_TOKEN`
+   - `csrf_key`   → `SCHOOLOGY_CSRF_KEY`
+   - `uid`        → `SCHOOLOGY_UID`
+
+### Storing the values
 
 ```bash
+# .env.integration (add to .gitignore!)
 SCHOOLOGY_HOST=yourschool.schoology.com
-SCHOOLOGY_SESS_ID=your-session-id-value
-SCHOOLOGY_CSRF_TOKEN=your-csrf-token-value
-SCHOOLOGY_CSRF_KEY=your-csrf-key-value
-SCHOOLOGY_UID=your-uid-value
+SCHOOLOGY_SESS_ID=...
+SCHOOLOGY_CSRF_TOKEN=...
+SCHOOLOGY_CSRF_KEY=...
+SCHOOLOGY_UID=...
 ```
 
-## Method 2: Firefox Developer Tools
-
-### Steps
-
-1. Open Firefox and log into Schoology
-2. Press `F12` to open Developer Tools
-3. Click the **Storage** tab
-4. Expand **Cookies** in the left sidebar
-5. Click on your Schoology domain
-6. Find and copy the same four values as described above
-
-## Method 3: Safari Web Inspector
-
-### Enable Developer Tools (First Time Only)
-
-1. Open Safari Preferences
-2. Go to **Advanced** tab
-3. Check "Show Develop menu in menu bar"
-
-### Extract Cookies
-
-1. Log into Schoology in Safari
-2. From the menu bar, choose **Develop** → **Show Web Inspector**
-3. Click the **Storage** tab
-4. Click **Cookies** → your Schoology domain
-5. Find and copy the same four values
-
-## Using 1Password (Recommended for Security)
-
-Instead of storing credentials in plain text, you can store them in 1Password:
-
-### Step 1: Create 1Password Item
-
-1. Open 1Password
-2. Create a new **Login** item
-3. Title it "Schoology Session Credentials"
-4. Add custom fields for:
-   - `host` (text)
-   - `sess_id` (password)
-   - `csrf_token` (password)
-   - `csrf_key` (password)
-   - `uid` (text)
-
-### Step 2: Create .env.integration with 1Password References
+With 1Password CLI:
 
 ```bash
-# .env.integration
-SCHOOLOGY_HOST=op://Private/Schoology Session Credentials/host
-SCHOOLOGY_SESS_ID=op://Private/Schoology Session Credentials/sess_id
-SCHOOLOGY_CSRF_TOKEN=op://Private/Schoology Session Credentials/csrf_token
-SCHOOLOGY_CSRF_KEY=op://Private/Schoology Session Credentials/csrf_key
-SCHOOLOGY_UID=op://Private/Schoology Session Credentials/uid
-```
-
-### Step 3: Run with 1Password CLI
-
-```bash
-# Load values from 1Password and run your application
-op run --env-file=.env.integration -- go run examples/basic/main.go
-
-# Or for tests
+# store under op://Private/Schoology Session/{host,sess_id,...}
 op run --env-file=.env.integration -- go test -tags=integration -v
 ```
 
-## Session Expiration
+## Session lifetime
 
-Sessions typically last **7-14 days** depending on school configuration.
+Drupal session cookies on Schoology last ~14 days by default (the
+library sets `ExpiresAt` to 14 days from session creation). When
+`ValidateSession` starts returning auth errors, re-run `auth.Login`
+(or re-extract manually) to get fresh values.
 
-### Signs Your Session Has Expired
+## Security
 
-- Getting "unauthorized" or "session expired" errors
-- Can't fetch data even though credentials seem correct
-- Response from Schoology is a login page redirect
-
-### What to Do When Session Expires
-
-1. Log into Schoology in your browser again
-2. Extract fresh cookies following the steps above
-3. Update your `.env.integration` file or 1Password item
-4. Try again
-
-## Security Best Practices
-
-### DO:
-- ✅ Store session cookies securely (1Password recommended)
-- ✅ Add `.env.integration` to `.gitignore`
-- ✅ Delete old sessions when no longer needed
-- ✅ Use separate cookies for testing vs production
-- ✅ Log out of Schoology when done to invalidate the session
-
-### DON'T:
-- ❌ Commit session cookies to version control
-- ❌ Share cookies with others
-- ❌ Store cookies in plain text files
-- ❌ Reuse expired cookies
-- ❌ Use cookies from public/shared computers
+- Treat session cookies like passwords. A valid `SESS…` cookie grants
+  full API access to your Schoology account until it expires.
+- Do not commit `.env.integration` or `.schoology-session.json`.
+- Prefer a secret manager (1Password CLI, `pass`, HashiCorp Vault,
+  etc.) over plain files when automating.
+- Log out of Schoology in your browser when you're done developing —
+  it invalidates the session server-side.
 
 ## Troubleshooting
 
-### Problem: Can't find SESS* cookie
+**"no SESS\* cookie on authenticated page"** — the browser didn't
+actually complete login (redirect was interrupted, or you closed the
+window early). Retry.
 
-**Solution**: Make sure you're fully logged in. Try refreshing the page and checking again.
+**`auth.Login` just hangs** — you probably haven't reached `/home`
+or `/parent/home` yet. Make sure the browser window has completed
+its SSO flow. If you're still stuck, widen the timeout with
+`auth.WithTimeout(15 * time.Minute)`.
 
-### Problem: Cookie values seem incomplete
+**`ErrSSORequired` from `LoginWithPassword`** — your tenant redirected
+off-host for SSO. Use `auth.Login` instead.
 
-**Solution**: Some browsers truncate long values. Double-click the value field to see the full value, or right-click → Copy.
-
-### Problem: Getting 401 Unauthorized errors
-
-**Solution**: Your session has likely expired. Extract fresh cookies.
-
-### Problem: No UID cookie found
-
-**Solution**: The UID might be embedded in the URL or in other page data. Check the browser's Network tab for API requests and look for a `uid` parameter.
-
-### Problem: CSRF tokens missing
-
-**Solution**: Some schools may not use CSRF protection. Try setting these to empty strings and see if it works. (This is less secure but may be the only option.)
-
-## FAQ
-
-**Q: How often do I need to refresh cookies?**
-A: Typically every 7-14 days. The library will tell you when the session has expired.
-
-**Q: Can I automate this?**
-A: Yes! Version 0.2.0 will include automated login with username/password using headless browser automation.
-
-**Q: Is this legal?**
-A: Yes, you're using your own credentials to access data you already have permission to access. This is no different than using a browser.
-
-**Q: Will this work for parent accounts?**
-A: Yes! Parent accounts work the same way as student accounts.
-
-**Q: What if my school uses single sign-on (SSO)?**
-A: This should still work. Log in through your SSO provider, then extract cookies from the Schoology page once you're logged in.
-
-## Next Steps
-
-Once you have your session cookies:
-
-1. Test them with the basic example:
-   ```bash
-   export SCHOOLOGY_HOST=yourschool.schoology.com
-   export SCHOOLOGY_SESS_ID=your-session-id
-   export SCHOOLOGY_CSRF_TOKEN=your-token
-   export SCHOOLOGY_CSRF_KEY=your-key
-   export SCHOOLOGY_UID=your-uid
-
-   go run examples/basic/main.go
-   ```
-
-2. Or run integration tests:
-   ```bash
-   go test -tags=integration -v
-   ```
-
-3. Start building with the library!
-
-## Need Help?
-
-- Check the [main README](../README.md) for usage examples
-- Open an issue on GitHub
-- See [CONTRIBUTING.md](../CONTRIBUTING.md) for how to get help
-
----
-
-**Remember**: Treat session cookies like passwords. Keep them secure!
+**`ErrBadCredentials` when you're sure the password is right** —
+check whether your account requires MFA. If it does, scripted password
+login can't work; use `auth.Login` and complete the MFA step manually.

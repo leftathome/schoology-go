@@ -54,3 +54,6 @@ hack/redact.config.json
 
 # Claude Code working directory (agent worktrees etc.)
 .claude/
+
+# Saved auth.Login output — treat as a password
+.schoology-session.json
