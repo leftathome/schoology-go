@@ -24,14 +24,38 @@
 - `/iapi*/messages*`, `/iapi*/notifications`, `/iapi*/events/*` — all
   404 or 403.
 
-**Pages that DO exist but are HTML-only:**
+**Pages that DO render useful HTML for a parent:**
 
-- `/parent/grading_report/{child_uid}` — HTML
-- `/course/{courseNid}/gradebook` — HTML ("Course Profile")
-- `/messages/inbox` — HTML
-- `/parent/calendar` — HTML
+- `/messages/inbox` — HTML (we've only seen the empty-state so far;
+  filled inbox structure still TBD)
 - `/iapi/parent/overdue_submissions/{child_uid}` — JSON envelope with
-  a pre-rendered HTML blob inside `body.html`
+  a pre-rendered HTML blob inside `body.html` (OVERDUE + UPCOMING
+  sections; empty body when no submissions)
+- `/home/feed?children={child_uid}` — JSON envelope `{css, js, output}`
+  where `output` is the feed HTML (faculty posts, attachments,
+  announcements). Earlier status said "shape not yet probed"; as of
+  capture day 2026-04-19 the shape is **JSON-wrapped HTML**, not
+  stand-alone HTML.
+
+**Pages that EXIST on the server but render NO data for a parent
+account on the district we captured against** (a large US K-12
+district on a shared `*.schoology.com` tenant):
+
+- `/parent/grading_report/{child_uid}` — redirects to `/parent/home`
+- `/user/{child_uid}/grades` — 200 but renders the child's profile
+  page (Info / Portfolios tabs only), no grade content
+- `/course/{courseNid}/gradebook` — 200 but renders "Course Profile"
+  shell (materials sidebar only)
+- `/course/{sectionNid}/grades_summary` — 200 but also just the
+  course profile shell
+- `/parent/calendar` — 200 but the event grid is JS-rendered and
+  contains zero static event data
+- `/grades`, `/course/{nid}` (without a sub-path) — 403
+
+For this deployment Schoology surfaces only the feed,
+overdue/upcoming submissions, messages, and course materials —
+grades and gradebooks appear to live in a separate district SIS.
+v0.1.0 scope is narrowed to match (see below).
 
 `Drupal.settings` on these pages does **not** carry structured data
 for the resources — only config stubs
@@ -41,9 +65,13 @@ into the page DOM by the Drupal 7 backend.
 ## v0.1.0 goal
 
 > Make `schoology-go` useful enough for a parent dashboard (trunchbull).
-> That means grades, assignments, and messages retrievable as typed
-> values — across every accessible child — even if the underlying
-> transport is HTML scraping.
+> That means assignments (overdue + upcoming), messages, and faculty
+> feed posts with attachments retrievable as typed values — across
+> every accessible child — via HTML scraping of the parent-facing
+> pages that *do* expose data on the district we tested against.
+> Grades are out for v0.1.0 (that district doesn't surface them in
+> Schoology); re-evaluate on other districts once we have a
+> volunteer tester.
 
 ## Design principles
 
@@ -78,17 +106,20 @@ into the page DOM by the Drupal 7 backend.
   new `internal/htmlfetch/` package to keep `goquery` usage out of the
   resource files where possible.
 - **Fixture strategy**: each parser ships a table-driven test backed
-  by a redacted HTML fixture under `internal/testdata/html/*.html`.
-  Split:
-  - `hack/redact.go` (committed) — the redactor itself. Pure logic,
-    no real-name data.
+  by a fixture under `internal/testdata/html/`.
+  - `hack/redact.go` (committed) — the redactor itself. Still useful
+    for point substitution (names, UIDs).
   - `hack/redact.config.json` (**gitignored**) — maps real names,
-    UIDs, emails to stable placeholders (`Student Alpha`, `UID-1001`,
-    `example.com`). Stays local. Gets regenerated each time someone
-    runs the capture flow on their own account.
-  - `internal/testdata/html/*.html` (committed) — only the output of
-    the redactor, not the raw captures. `.playwright-captures/` stays
-    gitignored so the unredacted traffic never leaks.
+    UIDs, emails to placeholders. Stays local.
+  - `internal/testdata/html/*` (committed) — the live captures
+    contain too much free-form teacher communication for a pure
+    string-replace redactor to scrub safely, so the committed
+    fixtures are **synthesized** from observed structure: same
+    selectors, same attribute shapes, placeholder content. Raw
+    captures stay under `.playwright-captures/` (gitignored) so the
+    unredacted traffic never leaks, and so parsers can be
+    spot-checked against real data locally when a regression
+    is suspected.
 - **Error model**: on selector miss we return the existing `*Error`
   type with `Code: ErrCodeParse` (a new ErrorCode we'll add), plus
   `Op` set to the resource/selector path. Consistency with the rest
@@ -100,34 +131,39 @@ into the page DOM by the Drupal 7 backend.
 
 ## Scope (ordered by value for trunchbull)
 
-1. **Grades** — per-child summary AND per-section per-assignment
-   detail. Two parsers:
-   - `/parent/grading_report/{child_uid}` → cross-section summary
-   - `/course/{courseNid}/gradebook` → per-assignment detail
-2. **Assignments** — upcoming + overdue, per-child. Source:
-   `/iapi/parent/overdue_submissions/{child_uid}` body.html, plus
-   calendar HTML for upcoming.
-3. **Messages** (read-only) — inbox list (subject, sender, timestamp,
-   read flag), thread read, **with attachment metadata**.
-   `/messages/inbox` HTML. No send for v0.1.0.
-4. **Attachments** — first-class. Library exposes an
+1. **Assignments** — upcoming + overdue, per-child. Source:
+   `/iapi/parent/overdue_submissions/{child_uid}` body.html
+   (OVERDUE + UPCOMING sections). This is the highest-value
+   endpoint given what's actually exposed to parents on the
+   district we tested against.
+2. **Course feed / announcements** — faculty posts in the home feed.
+   `/home/feed?children={child_uid}` → JSON envelope `{css, js,
+   output}` where `output` is the feed HTML. Attachment-bearing
+   flyers and course updates surface here.
+3. **Attachments** — first-class. Library exposes an
    `Attachment` type with `{ID, Filename, URL, MimeType, Size}` and a
    `DownloadAttachment(ctx, url) (io.ReadCloser, error)` that reuses
-   the authenticated HTTP client. Attachments surface everywhere they
-   exist: message threads, course post feeds, assignment descriptions,
-   materials. Schoology attachment URL pattern:
-   `/attachment/{id}/source/{hash}.ext?checkad=1`.
-5. **Course feed / announcements** — faculty posts in the home feed.
-   `/home/feed?children={child_uid}` returned 200 but shape is not
-   yet probed; a 10-minute probe session before this item starts to
-   confirm JSON vs HTML. This is where attachment-bearing flyers and
-   course updates show up.
-6. **Calendar / events** — combined feed. *Stretch.*
-7. **Attendance** — if accessible to a parent account; probe first.
-   *Stretch.*
+   the authenticated HTTP client. Attachments surface in message
+   threads and feed posts (and presumably in materials/assignment
+   descriptions once we probe those pages). Schoology attachment
+   URL pattern: `/attachment/{id}/source/{hash}.ext?checkad=1`.
+4. **Messages** (read-only) — inbox list (subject, sender, timestamp,
+   read flag), thread read, **with attachment metadata**.
+   `/messages/inbox` HTML. Currently only empty-inbox structure is
+   captured; filled-inbox selectors need a second capture pass when
+   there's mail to look at. No send for v0.1.0.
 
-Items 1–5 are the v0.1.0 bar. 6–7 are stretch; if they drop they
-become v0.1.1.
+### Out for v0.1.0 on the tested district (see "Endpoints..." above)
+
+- **Grades** (both cross-section summary and per-assignment detail):
+  the district doesn't expose grade data to Schoology parent
+  accounts. Keep the parser issues open so a volunteer on a
+  different district can rehydrate them, but do not block v0.1.0
+  ship on them.
+- **Calendar / events**: the `/parent/calendar` page is a
+  JS-rendered shell; the event grid is populated client-side from
+  an XHR we haven't identified yet. Defer.
+- **Attendance**: never probed; defer.
 
 ## Cross-cutting work
 
