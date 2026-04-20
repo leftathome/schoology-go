@@ -51,3 +51,6 @@ testdata/*.tmp
 # Redactor config — maps real names/UIDs/emails to placeholders and MUST stay local.
 # See hack/redact.config.example.json for the schema.
 hack/redact.config.json
+
+# Claude Code working directory (agent worktrees etc.)
+.claude/
