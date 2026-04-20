@@ -4,6 +4,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"net/url"
+	"regexp"
+	"strconv"
 )
 
 // mustParseURL parses a URL and panics if it fails.
@@ -24,4 +26,25 @@ func mustParseURL(rawURL string) *url.URL {
 func sessCookieName(host string) string {
 	sum := md5.Sum([]byte(host))
 	return "SESS" + hex.EncodeToString(sum[:])
+}
+
+// userIDRe extracts the numeric uid from a /user/{uid} href.
+var userIDRe = regexp.MustCompile(`/user/(\d+)`)
+
+// parseUserID returns the numeric user id embedded in href, or 0 if
+// the href does not match /user/{uid}. Handles absolute and path-only
+// forms and strips any query/fragment before matching.
+func parseUserID(href string) int64 {
+	if u, err := url.Parse(href); err == nil {
+		href = u.Path
+	}
+	m := userIDRe.FindStringSubmatch(href)
+	if m == nil {
+		return 0
+	}
+	id, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
 }

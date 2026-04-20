@@ -67,9 +67,6 @@ type Message struct {
 // threadIDRe extracts the numeric thread id from /messages/thread/{id}.
 var threadIDRe = regexp.MustCompile(`/messages/thread/(\d+)`)
 
-// userIDRe extracts the numeric user id from /user/{uid}.
-var userIDRe = regexp.MustCompile(`/user/(\d+)`)
-
 // inboxDateLayouts are the layouts parseInbox tries against the date
 // cell. They're best-effort — on miss we leave LastActivity zero.
 var inboxDateLayouts = []string{
@@ -238,11 +235,7 @@ func parseInboxRow(s *goquery.Selection) (*MessageThread, *Error) {
 		if senderLink.Length() > 0 {
 			t.SenderName = strings.TrimSpace(senderLink.Text())
 			if href, ok := senderLink.Attr("href"); ok {
-				if m := userIDRe.FindStringSubmatch(href); m != nil {
-					if uid, err := strconv.ParseInt(m[1], 10, 64); err == nil {
-						t.SenderUID = uid
-					}
-				}
+				t.SenderUID = parseUserID(href)
 			}
 		} else {
 			t.SenderName = strings.TrimSpace(senderCell.Text())

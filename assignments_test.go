@@ -183,9 +183,9 @@ func TestGetOverdueSubmissions_Mock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	const childUID int64 = 130401977
+	const childUID int64 = 1000000001
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/iapi/parent/overdue_submissions/130401977" {
+		if r.URL.Path != "/iapi/parent/overdue_submissions/1000000001" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return

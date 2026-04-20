@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,9 +31,6 @@ type Post struct {
 type feedEnvelope struct {
 	Output string `json:"output"`
 }
-
-// userIDRe extracts the numeric uid from a /user/{uid} href.
-var userIDRe = regexp.MustCompile(`/user/(\d+)`)
 
 // whitespaceRe collapses runs of whitespace to a single space.
 var whitespaceRe = regexp.MustCompile(`\s+`)
@@ -196,24 +192,6 @@ func parseFeedAttachment(af *goquery.Selection) *Attachment {
 	}
 
 	return att
-}
-
-// parseUserID extracts the uid from a /user/{uid} href. Returns 0 if
-// the href does not match.
-func parseUserID(href string) int64 {
-	// Strip any query/fragment before matching.
-	if u, err := url.Parse(href); err == nil {
-		href = u.Path
-	}
-	m := userIDRe.FindStringSubmatch(href)
-	if m == nil {
-		return 0
-	}
-	id, err := strconv.ParseInt(m[1], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return id
 }
 
 // collapseWhitespace trims and folds runs of whitespace to a single
