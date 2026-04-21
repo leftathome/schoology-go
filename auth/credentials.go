@@ -35,7 +35,7 @@ import (
 // Credentials is the minimum set of values that schoology.NewClient
 // needs to make authenticated requests.
 type Credentials struct {
-	// Host is the tenant subdomain, e.g. "meanyms.schoology.com".
+	// Host is the tenant subdomain, e.g. "yourschool.schoology.com".
 	Host string `json:"host"`
 
 	// SessID is the value of the Drupal session cookie

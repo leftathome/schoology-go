@@ -7,10 +7,10 @@
     "realparent@example.net":   "parent@example.com",
     "alpha.student@example.net": "studentalpha@example.com",
     "beta.student@example.net":  "studentbeta@example.com",
-    "130401977": "UID-1001",
-    "130401987": "UID-1002",
-    "7978424918": "COURSE-NID-1",
-    "1252139350": "COURSE-1",
+    "999999901": "UID-1001",
+    "999999902": "UID-1002",
+    "888888801": "COURSE-NID-1",
+    "777777701": "COURSE-1",
     "myschool.schoology.com": "example.schoology.com"
   }
 }
