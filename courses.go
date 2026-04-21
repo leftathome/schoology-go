@@ -14,19 +14,13 @@ func (c *Client) GetCourses(ctx context.Context) ([]*Course, error) {
 
 	resp, err := c.do(ctx, http.MethodGet, "/iapi2/site-navigation/courses", nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, err
+		return nil, withOp(op, err)
 	}
 	defer resp.Body.Close()
 
 	var env coursesEnvelope
 	if err := decodeJSON(resp, &env); err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, err
+		return nil, withOp(op, err)
 	}
 	return env.Data.Courses, nil
 }
@@ -39,19 +33,13 @@ func (c *Client) GetChildren(ctx context.Context) ([]*Child, error) {
 
 	resp, err := c.do(ctx, http.MethodGet, "/iapi/parent/info", nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, err
+		return nil, withOp(op, err)
 	}
 	defer resp.Body.Close()
 
 	var env parentInfoEnvelope
 	if err := decodeJSON(resp, &env); err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, err
+		return nil, withOp(op, err)
 	}
 
 	out := make([]*Child, 0, len(env.Body.Children))

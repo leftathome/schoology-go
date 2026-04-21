@@ -47,18 +47,12 @@ func (c *Client) GetFeed(ctx context.Context, childUID int64) ([]*Post, ParseErr
 	path := fmt.Sprintf("/home/feed?children=%d", childUID)
 	resp, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, nil, err
+		return nil, nil, withOp(op, err)
 	}
 
 	var env feedEnvelope
 	if err := decodeJSON(resp, &env); err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, nil, err
+		return nil, nil, withOp(op, err)
 	}
 
 	posts, perrs := parseFeed(env.Output)
@@ -142,10 +136,7 @@ func parseFeedItem(li *goquery.Selection) (*Post, *Error) {
 	}
 
 	// PostedTo course link (first /course/ anchor inside update-sentence-inner).
-	courseLink := li.Find(".update-sentence-inner a").FilterFunction(func(_ int, a *goquery.Selection) bool {
-		href, _ := a.Attr("href")
-		return strings.HasPrefix(href, "/course/")
-	}).First()
+	courseLink := li.Find(`.update-sentence-inner a[href^="/course/"]`).First()
 	if courseLink.Length() > 0 {
 		post.PostedTo = collapseWhitespace(courseLink.Text())
 		if href, ok := courseLink.Attr("href"); ok {

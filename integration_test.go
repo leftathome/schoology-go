@@ -96,6 +96,7 @@ func TestIntegration_GetCoursesForChild(t *testing.T) {
 	for _, ch := range children {
 		ch := ch
 		t.Run(ch.Username, func(t *testing.T) {
+			t.Parallel()
 			courses, err := client.GetCoursesForChild(context.Background(), ch.UID)
 			if err != nil {
 				t.Fatalf("GetCoursesForChild(%d): %v", ch.UID, err)
@@ -165,6 +166,7 @@ func TestIntegration_GetOverdueSubmissions(t *testing.T) {
 	for _, ch := range children {
 		ch := ch
 		t.Run(ch.Username, func(t *testing.T) {
+			t.Parallel()
 			items, pErrs, err := client.GetOverdueSubmissions(context.Background(), ch.UID)
 			if err != nil {
 				t.Fatalf("GetOverdueSubmissions(%d): %v", ch.UID, err)
@@ -189,6 +191,7 @@ func TestIntegration_GetFeed(t *testing.T) {
 	for _, ch := range children {
 		ch := ch
 		t.Run(ch.Username, func(t *testing.T) {
+			t.Parallel()
 			posts, pErrs, err := client.GetFeed(context.Background(), ch.UID)
 			if err != nil {
 				t.Fatalf("GetFeed(%d): %v", ch.UID, err)

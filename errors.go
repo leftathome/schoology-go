@@ -165,6 +165,16 @@ func NewParseError(op, message string) *Error {
 	}
 }
 
+// withOp stamps op onto err.Op when err is a *Error, then returns err
+// so call sites can "return ..., withOp(op, err)". A no-op for other
+// error types; safe to call with nil err.
+func withOp(op string, err error) error {
+	if e, ok := err.(*Error); ok {
+		e.Op = op
+	}
+	return err
+}
+
 // ParseErrors is a collection of per-item parse failures from a single
 // HTML page. Parsers return their best-effort result alongside a
 // ParseErrors value so a single malformed row does not fail the whole

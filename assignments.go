@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -56,10 +55,6 @@ type overdueSubmissionsEnvelope struct {
 	} `json:"body"`
 }
 
-// assignmentIDRe extracts the numeric id from a Schoology assignment URL
-// of the form /assignment/{id}.
-var assignmentIDRe = regexp.MustCompile(`^/assignment/(\d+)(?:[/?#]|$)`)
-
 // GetOverdueSubmissions fetches and parses the overdue/upcoming
 // submissions page for the given child UID.
 //
@@ -74,18 +69,12 @@ func (c *Client) GetOverdueSubmissions(ctx context.Context, childUID int64) ([]*
 	path := fmt.Sprintf("/iapi/parent/overdue_submissions/%d", childUID)
 	resp, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, nil, err
+		return nil, nil, withOp(op, err)
 	}
 
 	var env overdueSubmissionsEnvelope
 	if err := decodeJSON(resp, &env); err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, nil, err
+		return nil, nil, withOp(op, err)
 	}
 
 	assignments, perrs := parseOverdueSubmissions(env.Body.HTML)
@@ -201,14 +190,4 @@ func parseUpcomingEvent(event *goquery.Selection, status AssignmentStatus) (*Ass
 
 // parseAssignmentID returns the numeric assignment id embedded in href,
 // or 0 if href does not match /assignment/{id}.
-func parseAssignmentID(href string) int64 {
-	m := assignmentIDRe.FindStringSubmatch(href)
-	if m == nil {
-		return 0
-	}
-	id, err := strconv.ParseInt(m[1], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return id
-}
+func parseAssignmentID(href string) int64 { return parsePathID(href, "/assignment/") }

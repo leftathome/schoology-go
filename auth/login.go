@@ -213,11 +213,23 @@ func waitForLogin(ctx context.Context, page *rod.Page, host string, pollInt time
 	})
 }
 
+// badCredsSettleCount is the number of consecutive /login observations
+// waitForPostSubmit tolerates before declaring ErrBadCredentials. Three
+// polls at the default 500ms interval means ~1.5s of grace for a slow
+// server before the caller gets a fast failure instead of the full
+// timeout.
+const badCredsSettleCount = 3
+
 // waitForPostSubmit polls for one of three outcomes: landed on home
-// (success), still on /login (bad creds), or navigated off-host (SSO).
+// (success), navigated off-host (SSO), or still on /login (bad creds).
+// Fast-fails with ErrBadCredentials after the URL stays on /login for
+// badCredsSettleCount consecutive polls rather than waiting the full
+// context timeout.
 func waitForPostSubmit(ctx context.Context, page *rod.Page, host string, pollInt time.Duration) error {
-	var offHost bool
-	var stillLogin bool
+	var (
+		offHost     bool
+		loginStreak int
+	)
 	err := pollUntil(ctx, pollInt, func() (bool, error) {
 		info, err := page.Info()
 		if err != nil {
@@ -230,19 +242,17 @@ func waitForPostSubmit(ctx context.Context, page *rod.Page, host string, pollInt
 			offHost = true
 			return true, nil
 		}
-		// still on a page under this host — probably /login still.
 		if strings.Contains(info.URL, "/login") {
-			stillLogin = true
-			// don't early-return — we want to wait a bit in case
-			// the server is just slow, but the next iterations will
-			// keep seeing /login and we'll time out.
+			loginStreak++
+			if loginStreak >= badCredsSettleCount {
+				return true, ErrBadCredentials
+			}
+		} else {
+			loginStreak = 0
 		}
 		return false, nil
 	})
 	if err != nil {
-		if stillLogin {
-			return ErrBadCredentials
-		}
 		return err
 	}
 	if offHost {

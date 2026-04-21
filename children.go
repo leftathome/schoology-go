@@ -20,10 +20,7 @@ func (c *Client) viewAs(ctx context.Context, childUID int64) error {
 
 	resp, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/parent/switch_child/%d", childUID), nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return err
+		return withOp(op, err)
 	}
 	defer resp.Body.Close()
 

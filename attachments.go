@@ -2,60 +2,29 @@ package schoology
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 )
 
 // Attachment describes a downloadable file associated with a message
 // thread, feed post, or other resource. Schoology's attachment URL
 // has the shape /attachment/{id}/source/{hash}.{ext}?checkad=1;
-// ID is parsed from that URL, while Filename, MimeType, and Size
-// come from the parent resource's HTML (and may be zero-valued when
-// the page doesn't surface them).
+// ID is parsed from that URL, while Filename and MimeType come from
+// the parent resource's HTML (and may be zero-valued when the page
+// doesn't surface them).
 type Attachment struct {
-	// ID is Schoology's numeric attachment id, parsed from the
-	// /attachment/{id}/... URL.
-	ID int64
-
-	// Filename is the display name (e.g. "flyer.pdf"), not the
-	// hashed name in the URL path.
-	Filename string
-
-	// URL is the fully-qualified or path-relative source URL,
-	// including the ?checkad=1 tail. Callers pass this to
-	// DownloadAttachment as-is.
-	URL string
-
-	// MimeType is a best-effort content type — "application/pdf",
-	// "image/jpeg", etc. Empty when the HTML didn't label it.
-	MimeType string
-
-	// Size is the file size in bytes, or 0 if unknown. Schoology's
-	// HTML pages rarely surface this.
-	Size int64
+	ID       int64  // from the /attachment/{id}/... URL
+	Filename string // display name, not the hashed URL-path name
+	URL      string // source URL, includes the ?checkad=1 tail
+	MimeType string // best-effort; may be the Schoology label ("Adobe PDF") rather than an RFC media type
 }
-
-// attachmentIDRe extracts the numeric id from a Schoology attachment
-// URL. Works for absolute ("https://x.schoology.com/attachment/123/...")
-// and path-only ("/attachment/123/...") forms.
-var attachmentIDRe = regexp.MustCompile(`/attachment/(\d+)(?:/|$)`)
 
 // parseAttachmentID returns the numeric attachment id embedded in rawURL,
 // or 0 if the URL does not match /attachment/{id}/... .
-func parseAttachmentID(rawURL string) int64 {
-	m := attachmentIDRe.FindStringSubmatch(rawURL)
-	if m == nil {
-		return 0
-	}
-	id, err := strconv.ParseInt(m[1], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return id
-}
+func parseAttachmentID(rawURL string) int64 { return parsePathID(rawURL, "/attachment/") }
 
 // DownloadAttachment does an authenticated GET for an attachment URL
 // and returns the raw body. The caller MUST close the returned
@@ -67,7 +36,7 @@ func parseAttachmentID(rawURL string) int64 {
 // with "/"). Absolute URLs pointing at the same host as the client
 // are rewritten to path-only form so the client's session cookies
 // attach correctly; absolute URLs pointing elsewhere are rejected
-// with an auth-code error.
+// with ErrCodeClient so session cookies cannot be misdirected.
 func (c *Client) DownloadAttachment(ctx context.Context, url string) (io.ReadCloser, error) {
 	const op = "DownloadAttachment"
 
@@ -82,10 +51,19 @@ func (c *Client) DownloadAttachment(ctx context.Context, url string) (io.ReadClo
 
 	resp, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
+		return nil, withOp(op, err)
+	}
+
+	// Expired sessions get a 200 with the login page HTML instead of
+	// the file bytes. Treat that as auth failure rather than handing
+	// the login form to a caller that expected a PDF.
+	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(strings.ToLower(ct), "text/html") {
+		resp.Body.Close()
+		return nil, &Error{
+			Code:    ErrCodeAuth,
+			Op:      op,
+			Message: "attachment returned text/html (session expired?)",
 		}
-		return nil, err
 	}
 
 	return resp.Body, nil
@@ -95,20 +73,14 @@ func (c *Client) DownloadAttachment(ctx context.Context, url string) (io.ReadClo
 // passed to Client.do.
 func (c *Client) attachmentPath(rawURL string) (string, error) {
 	if rawURL == "" {
-		return "", errAttachmentURL("empty URL")
+		return "", errors.New("empty URL")
 	}
 	if strings.HasPrefix(rawURL, "/") {
 		return rawURL, nil
 	}
 	expectedPrefix := c.baseURL + "/"
 	if !strings.HasPrefix(rawURL, expectedPrefix) {
-		return "", errAttachmentURL("URL does not match client host: " + rawURL)
+		return "", fmt.Errorf("URL does not match client host: %s", rawURL)
 	}
 	return rawURL[len(c.baseURL):], nil
 }
-
-type attachmentURLErr string
-
-func (e attachmentURLErr) Error() string { return string(e) }
-
-func errAttachmentURL(msg string) error { return attachmentURLErr(msg) }

@@ -1,11 +1,9 @@
 package schoology
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -50,23 +48,6 @@ type MessageThread struct {
 	URL string
 }
 
-// Message represents a single message inside a thread. Placeholder for
-// v0.1.1: we keep the type + parseThread signature compiled in so later
-// work does not need a bad-style rename, but there is no parser or
-// public Get method yet — the inbox was empty when fixtures were
-// captured and we have no thread HTML to work against.
-type Message struct {
-	ID          int64
-	SenderName  string
-	SenderUID   int64
-	SentAt      time.Time
-	Body        string
-	Attachments []*Attachment
-}
-
-// threadIDRe extracts the numeric thread id from /messages/thread/{id}.
-var threadIDRe = regexp.MustCompile(`/messages/thread/(\d+)`)
-
 // inboxDateLayouts are the layouts parseInbox tries against the date
 // cell. They're best-effort — on miss we leave LastActivity zero.
 var inboxDateLayouts = []string{
@@ -87,10 +68,7 @@ func (c *Client) GetInbox(ctx context.Context) ([]*MessageThread, ParseErrors, e
 
 	resp, err := c.do(ctx, http.MethodGet, "/messages/inbox", nil)
 	if err != nil {
-		if e, ok := err.(*Error); ok {
-			e.Op = op
-		}
-		return nil, nil, err
+		return nil, nil, withOp(op, err)
 	}
 
 	doc, err := htmlfetch.Parse(resp)
@@ -120,35 +98,19 @@ func (c *Client) GetInbox(ctx context.Context) ([]*MessageThread, ParseErrors, e
 		}
 	}
 
-	// Re-serialize the document and hand off to parseInbox so the
-	// test-reachable helper and the network path go through exactly
-	// the same parser code.
-	var buf bytes.Buffer
-	if html, herr := doc.Html(); herr == nil {
-		buf.WriteString(html)
-	} else {
-		return nil, nil, &Error{
-			Code:    ErrCodeParse,
-			Op:      op,
-			Message: "failed to re-render document",
-			Err:     herr,
-		}
-	}
-
-	threads, perrs := parseInbox(buf.String())
+	threads, perrs := parseInboxDoc(doc)
 	return threads, perrs, nil
 }
 
-// parseInbox is test-reachable — exercised with static fixture HTML.
-// Returns the list of threads it could parse plus a ParseErrors for any
-// rows it failed on. An empty inbox returns (nil, nil).
+// parseInbox is a thin wrapper around parseInboxDoc that accepts a
+// raw HTML string; tests use it with the committed fixtures.
 //
-// TODO(schoology-go-m7i-followup): the filled-row selectors below are a
-// best-effort guess based on Schoology's Drupal-7 patterns and the
-// empty-state fixture's table header. They are NOT verified against
-// real filled-inbox HTML because the capture account's inbox was empty.
-// When a filled fixture is available, confirm / update the selectors
-// and add a dedicated test.
+// TODO(schoology-go-m7i-followup): the filled-row selectors in
+// parseInboxRow are a best-effort guess based on Schoology's
+// Drupal-7 patterns and the empty-state fixture's table header.
+// They are NOT verified against real filled-inbox HTML because the
+// capture account's inbox was empty. When a filled fixture is
+// available, confirm / update the selectors and add a dedicated test.
 func parseInbox(html string) ([]*MessageThread, ParseErrors) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
@@ -156,17 +118,19 @@ func parseInbox(html string) ([]*MessageThread, ParseErrors) {
 		perrs.Append(NewParseError("parseInbox", "failed to build document: "+err.Error()))
 		return nil, perrs
 	}
+	return parseInboxDoc(doc)
+}
 
+// parseInboxDoc walks the messages-inbox table in doc and returns
+// the threads it could parse plus a ParseErrors for per-row
+// failures. An empty inbox returns (nil, nil).
+func parseInboxDoc(doc *goquery.Document) ([]*MessageThread, ParseErrors) {
 	var (
 		threads []*MessageThread
 		perrs   ParseErrors
 	)
 
 	rows := doc.Find("table.messages-table tbody tr")
-	if rows.Length() == 0 {
-		// Fall back to any table row when the class isn't where we expect.
-		rows = doc.Find("table tbody tr")
-	}
 
 	rows.Each(func(_ int, s *goquery.Selection) {
 		// Empty-state row: a single td with a colspan. Return early —
@@ -214,11 +178,7 @@ func parseInboxRow(s *goquery.Selection) (*MessageThread, *Error) {
 		t.Subject = strings.TrimSpace(subjectLink.Text())
 		if href, ok := subjectLink.Attr("href"); ok {
 			t.URL = href
-			if m := threadIDRe.FindStringSubmatch(href); m != nil {
-				if id, err := strconv.ParseInt(m[1], 10, 64); err == nil {
-					t.ID = id
-				}
-			}
+			t.ID = parsePathID(href, "/messages/thread/")
 		}
 	} else {
 		t.Subject = strings.TrimSpace(subjectCell.Text())

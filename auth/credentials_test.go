@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,7 +44,7 @@ func TestCredentials_Validate(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected error mentioning %q, got nil", tt.wantErr)
 			}
-			if !containsAll(err.Error(), tt.wantErr) {
+			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error %q does not mention %q", err.Error(), tt.wantErr)
 			}
 		})
@@ -138,20 +139,3 @@ func TestNewClient_Valid(t *testing.T) {
 	}
 }
 
-func containsAll(s string, parts ...string) bool {
-	for _, p := range parts {
-		if !stringContains(s, p) {
-			return false
-		}
-	}
-	return true
-}
-
-func stringContains(haystack, needle string) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
-}

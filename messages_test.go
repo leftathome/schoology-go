@@ -149,7 +149,7 @@ func TestParseInbox_FilledFixture(t *testing.T) {
 func TestParseInbox_MalformedOnly(t *testing.T) {
 	// A table with rows that have no subject at all accumulates into
 	// ParseErrors without crashing.
-	html := `<table><tbody>
+	html := `<table class="messages-table"><tbody>
         <tr><td><a href="/messages/thread/1"></a></td><td>X</td><td>Tue Mar 31, 2026 at 9:41 am</td></tr>
     </tbody></table>`
 	threads, perrs := parseInbox(html)
@@ -162,7 +162,7 @@ func TestParseInbox_MalformedOnly(t *testing.T) {
 }
 
 func TestParseInboxRow_MessageCountBadge(t *testing.T) {
-	html := `<table><tbody>
+	html := `<table class="messages-table"><tbody>
         <tr>
           <td><a href="/messages/thread/9">Sub</a> <span class="badge">7</span></td>
           <td><a href="/user/42">X</a></td>

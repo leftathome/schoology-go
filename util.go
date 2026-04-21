@@ -4,8 +4,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"net/url"
-	"regexp"
 	"strconv"
+	"strings"
 )
 
 // mustParseURL parses a URL and panics if it fails.
@@ -28,23 +28,33 @@ func sessCookieName(host string) string {
 	return "SESS" + hex.EncodeToString(sum[:])
 }
 
-// userIDRe extracts the numeric uid from a /user/{uid} href.
-var userIDRe = regexp.MustCompile(`/user/(\d+)`)
-
-// parseUserID returns the numeric user id embedded in href, or 0 if
-// the href does not match /user/{uid}. Handles absolute and path-only
-// forms and strips any query/fragment before matching.
-func parseUserID(href string) int64 {
-	if u, err := url.Parse(href); err == nil {
-		href = u.Path
+// parsePathID extracts the numeric id that follows the given
+// URL-path prefix (e.g. "/user/", "/assignment/", "/attachment/").
+// Handles absolute and path-only URLs and ignores any query or
+// fragment. Returns 0 on no match.
+func parsePathID(rawURL, prefix string) int64 {
+	if u, err := url.Parse(rawURL); err == nil {
+		rawURL = u.Path
 	}
-	m := userIDRe.FindStringSubmatch(href)
-	if m == nil {
+	i := strings.Index(rawURL, prefix)
+	if i < 0 {
 		return 0
 	}
-	id, err := strconv.ParseInt(m[1], 10, 64)
+	s := rawURL[i+len(prefix):]
+	end := 0
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	id, err := strconv.ParseInt(s[:end], 10, 64)
 	if err != nil {
 		return 0
 	}
 	return id
 }
+
+// parseUserID returns the numeric user id in a /user/{uid} URL, or 0
+// if the URL does not match.
+func parseUserID(href string) int64 { return parsePathID(href, "/user/") }
