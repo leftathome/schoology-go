@@ -119,13 +119,20 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-// Is implements error equality checking
+// Is implements error equality checking. Two *Error values match when
+// they have the same Code, matching Go's sentinel-error convention
+// (compare sql.ErrNoRows, fs.ErrNotExist). This means errors.Is(err,
+// ErrNotAuthenticated), errors.Is(err, ErrSessionExpired), and
+// errors.Is(err, ErrInvalidSession) all return true for any *Error
+// with Code == ErrCodeAuth — the three are distinguishable by their
+// Message field if you need it, but for branching on the category use
+// any of them (or IsAuthError).
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
 	if !ok {
 		return false
 	}
-	return e.Code == t.Code && e.Message == t.Message
+	return e.Code == t.Code
 }
 
 // IsAuthError returns true if the error is an authentication error
@@ -144,6 +151,12 @@ func IsNotFoundError(err error) bool {
 func IsRateLimitError(err error) bool {
 	e, ok := err.(*Error)
 	return ok && e.Code == ErrCodeRateLimit
+}
+
+// IsPermissionError returns true if the error is a permission-denied error.
+func IsPermissionError(err error) bool {
+	e, ok := err.(*Error)
+	return ok && e.Code == ErrCodePermission
 }
 
 // IsParseError returns true if the error (or any wrapped error) is a parse error.

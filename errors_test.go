@@ -182,25 +182,30 @@ func TestError_Unwrap(t *testing.T) {
 
 func TestError_Is(t *testing.T) {
 	a := &Error{Code: ErrCodeAuth, Message: "not authenticated"}
-	b := &Error{Code: ErrCodeAuth, Message: "not authenticated"}
-	c := &Error{Code: ErrCodeAuth, Message: "different"}
-	d := &Error{Code: ErrCodeNotFound, Message: "not authenticated"}
+	bSameCode := &Error{Code: ErrCodeAuth, Message: "different message but same code"}
+	diffCode := &Error{Code: ErrCodeNotFound, Message: "not authenticated"}
 
-	if !a.Is(b) {
-		t.Error("a.Is(b) = false, want true (same code + message)")
+	// Code-only equality: two *Error values match when they share Code.
+	if !a.Is(bSameCode) {
+		t.Error("a.Is(sameCode) = false, want true")
 	}
-	if a.Is(c) {
-		t.Error("a.Is(c) = true, want false (different message)")
-	}
-	if a.Is(d) {
-		t.Error("a.Is(d) = true, want false (different code)")
+	if a.Is(diffCode) {
+		t.Error("a.Is(diffCode) = true, want false")
 	}
 	// non-*Error target
 	if a.Is(errors.New("plain")) {
 		t.Error("a.Is(plain error) = true, want false")
 	}
 
-	// sentinel via errors.Is
+	// A real auth error from the transport layer matches any auth
+	// sentinel via errors.Is — that's the contract users rely on.
+	realAuthErr := &Error{Code: ErrCodeAuth, Message: "unauthorized - session may have expired"}
+	if !errors.Is(realAuthErr, ErrNotAuthenticated) {
+		t.Error("errors.Is(realAuthErr, ErrNotAuthenticated) = false, want true")
+	}
+	if !errors.Is(realAuthErr, ErrSessionExpired) {
+		t.Error("errors.Is(realAuthErr, ErrSessionExpired) = false, want true")
+	}
 	if !errors.Is(ErrNotAuthenticated, ErrNotAuthenticated) {
 		t.Error("errors.Is sentinel self-check failed")
 	}
@@ -230,6 +235,18 @@ func TestIsRateLimitError(t *testing.T) {
 	}
 	if IsRateLimitError(errors.New("plain")) {
 		t.Error("IsRateLimitError(plain) = true")
+	}
+}
+
+func TestIsPermissionError(t *testing.T) {
+	if !IsPermissionError(ErrPermissionDenied) {
+		t.Error("IsPermissionError(ErrPermissionDenied) = false")
+	}
+	if IsPermissionError(ErrNotFound) {
+		t.Error("IsPermissionError(ErrNotFound) = true")
+	}
+	if IsPermissionError(errors.New("plain")) {
+		t.Error("IsPermissionError(plain) = true")
 	}
 }
 
