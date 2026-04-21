@@ -2,64 +2,66 @@
 
 ## Summary
 
-`schoology-go` is a Go client for Schoology's internal `iapi/iapi2`
-endpoints via session cookies. Live endpoint discovery against a real
-Schoology instance on 2026-04-19 found that most resource types
-(assignments, grades, messages) have **no clean JSON endpoint** for a
-parent account — those pages are server-rendered HTML with no
-supplementary XHR. The library's scope has been narrowed accordingly.
+`schoology-go` is a Go library for reading a Schoology parent/student
+account via its existing browser session. The v0.1.0 surface is
+complete and verified end-to-end against a live parent account; see
+[docs/OBSERVED_BEHAVIOR.md](docs/OBSERVED_BEHAVIOR.md) for the
+empirical reference.
 
-**Status**: Pre-v0.1.0 — code-complete for the endpoints we verified
-to return structured JSON. Shipping v0.1.0 requires HTML parsing for
-the remaining resources, tracked as a follow-up.
+**Status:** v0.1.0 feature-complete. Awaiting tag.
 
-## Live-verified endpoints
+## What's shipped
 
-| Endpoint | Exposed as | Notes |
+| Surface | Source endpoint | Notes |
 |---|---|---|
-| `GET /iapi2/site-navigation/courses` | `GetCourses()` | Envelope: `{data: {courses: [...]}}`. Scoped to the session's currently-viewed enrollment (for parents, `session.view_child`). |
-| `GET /iapi/parent/info` | `GetChildren()` | Envelope: `{response_code, body: {session, children}}`. We flatten the children map into a sorted slice. |
+| `auth.Login` / `auth.LoginWithPassword` | rod-driven browser against `/login` | Visible Chromium for SSO / MFA; headless scripted for native-password tenants. |
+| `auth.Credentials` + `Save/LoadCredentials` | — | Persist the four session values across runs (0600 JSON). |
+| `GetChildren` | `/iapi/parent/info` | Parent-account child list. |
+| `GetCourses` | `/iapi2/site-navigation/courses` | Scoped to the session's current `view_child`. |
+| `GetCoursesForChild` | same, after `/parent/switch_child/{uid}` | Mutex-serialized switch+read pair. |
+| `GetOverdueSubmissions` | `/iapi/parent/overdue_submissions/{uid}` | JSON envelope, HTML in `body.html`. |
+| `GetFeed` | `/home/feed?children={uid}` | JSON envelope, HTML in `output`. |
+| `GetInbox` | `/messages/inbox` | Empty-state verified live; filled-row selectors inferred + fixture-tested. |
+| `DownloadAttachment` | `/attachment/{id}/source/...?checkad=1` | Streamed; rejects text/html as auth-expired. |
 
-Cookie: `SESS` + md5(bare-hostname). Formula verified against a live
-session (real cookie name matched the md5 of the bare hostname, with
-no leading dot or URL scheme). CSRF headers confirmed as `X-CSRF-Token`
-and `X-CSRF-Key`.
+## What's explicitly deferred (and why)
 
-## Known gaps (deferred to v0.1.0 via HTML parsing)
+The districts we captured against route grade and calendar data to a
+separate SIS, so Schoology itself serves parents an empty shell for
+those pages. These issues stay open in `bd` awaiting a volunteer on
+a district that does expose the data:
 
-- Assignments list / detail
-- Grades (per-section, per-child, per-assignment)
-- Messages (inbox, thread read)
-- Calendar / events
-- Attendance
-
-Probing found that the parent-facing pages (`/parent/grading_report`,
-`/messages/inbox`, `/course/{nid}/gradebook`) return HTML with no
-supplementary JSON endpoints. The Drupal `Drupal.settings` blob on
-those pages also does not contain structured data for these resources
-— only config stubs (e.g. `s_messaging.min_query_length`). The v0.1.0
-plan is to add `goquery`-based parsers per resource, backed by
-redacted HTML fixtures.
-
-## Outstanding beads (`bd list`)
-
-- `schoology-go-9xy` — Cookie-name verification. **Closed**: formula
-  fixed and tested against real cookie name.
-- `schoology-go-401` — iapi endpoint discovery. **Mostly resolved**
-  via live capture. Remaining: find parent-scoped JSON for anything
-  beyond courses/children (none found in this pass).
-- `schoology-go-n1g` — Run integration tests end-to-end.
-- `schoology-go-3b7` — Raise unit-test coverage above 80%.
-- `schoology-go-oou` — chromedp vs Playwright MCP decision (likely
-  reframed now that Playwright MCP has proven itself for endpoint
-  discovery; runtime automation may still prefer chromedp).
+- `schoology-go-84g` — `/parent/grading_report/{uid}` cross-section summary
+- `schoology-go-gor` — `/course/{courseNid}/gradebook` per-assignment detail
+- `schoology-go-set` — `/parent/calendar` event grid
 
 ## Testing
 
 ```bash
-# Unit tests (mocked)
-go test ./...
+# Offline — must pass on a bare clone, no credentials.
+go test -race -cover ./...
 
-# Integration tests (requires real session cookies)
-op run --env-file=.env.integration -- go test -tags=integration -v
+# Integration — your own session required; see CONTRIBUTING.md.
+go test -tags=integration -v
 ```
+
+Coverage:
+
+| Package | Coverage |
+|---|---|
+| `github.com/leftathome/schoology-go` | ~89% |
+| `.../internal/htmlfetch` | ~95% |
+| `.../hack/redact` | ~78% (main() CLI plumbing uncovered) |
+| `.../auth` | ~32% (browser-driven paths require real Chromium) |
+
+See [AGENTS.md](AGENTS.md) "Testing policy" for the rationale behind
+these targets.
+
+## Pointers
+
+- [README.md](README.md) — getting-started guide
+- [CONTRIBUTING.md](CONTRIBUTING.md) — local dev + how to test with your own session
+- [docs/OBSERVED_BEHAVIOR.md](docs/OBSERVED_BEHAVIOR.md) — empirical endpoint reference with dates
+- [docs/SESSION_EXTRACTION.md](docs/SESSION_EXTRACTION.md) — how to establish a session (library-driven or manual)
+- [AGENTS.md](AGENTS.md) — testing / PII / bd-workflow policy
+- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — how the v0.1.0 scope was reached
